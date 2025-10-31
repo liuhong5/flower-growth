@@ -136,19 +136,41 @@
 
         async function loadData() {
             try {
+                console.log('尝试从 GitHub Gist 加载数据...');
                 const response = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
                     headers: { 'Authorization': `token ${GITHUB_TOKEN}` }
                 });
                 
                 if (response.ok) {
                     const gist = await response.json();
-                    const data = JSON.parse(gist.files['data.json'].content);
-                    flowers = data.flowers || [];
-                    gardens = data.gardens || [];
+                    console.log('Gist 文件:', Object.keys(gist.files));
+                    
+                    // 查找数据文件（优先使用第一个文件）
+                    const fileNames = Object.keys(gist.files);
+                    let dataFile = null;
+                    let fileName = '';
+                    
+                    if (fileNames.length > 0) {
+                        fileName = fileNames[0]; // 使用第一个文件
+                        gistFileName = fileName; // 保存文件名供保存时使用
+                        dataFile = gist.files[fileName];
+                        console.log(`使用文件: ${fileName}`);
+                    }
+                    
+                    if (dataFile) {
+                        const data = JSON.parse(dataFile.content);
+                        flowers = data.flowers || [];
+                        gardens = data.gardens || [];
+                        console.log('从 GitHub 加载数据成功');
+                    } else {
+                        throw new Error('找不到 JSON 数据文件');
+                    }
                 } else {
-                    throw new Error('Failed to load from GitHub');
+                    console.error('GitHub API 错误:', response.status, response.statusText);
+                    throw new Error(`GitHub API 错误: ${response.status}`);
                 }
             } catch (error) {
+                console.log('加载 GitHub 数据失败:', error.message);
                 console.log('使用本地存储作为备份');
                 flowers = JSON.parse(localStorage.getItem('shared-flowers') || '[]');
                 gardens = JSON.parse(localStorage.getItem('shared-gardens') || '[]');
@@ -156,10 +178,13 @@
             updateDisplay();
         }
 
+        let gistFileName = 'data.json'; // 全局变量存储文件名
+        
         async function saveData() {
             const data = { flowers, gardens, lastUpdate: new Date().toISOString() };
             
             try {
+                console.log('尝试保存数据到 GitHub Gist...');
                 const response = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
                     method: 'PATCH',
                     headers: {
@@ -168,17 +193,22 @@
                     },
                     body: JSON.stringify({
                         files: {
-                            'data.json': {
+                            [gistFileName]: {
                                 content: JSON.stringify(data, null, 2)
                             }
                         }
                     })
                 });
                 
-                if (!response.ok) throw new Error('Save failed');
-                console.log('数据已保存到GitHub');
+                if (response.ok) {
+                    console.log('数据已成功保存到 GitHub Gist');
+                } else {
+                    console.error('GitHub 保存失败:', response.status, response.statusText);
+                    throw new Error(`保存失败: ${response.status}`);
+                }
             } catch (error) {
-                console.log('保存到本地存储');
+                console.log('保存到 GitHub 失败:', error.message);
+                console.log('使用本地存储作为备份');
                 localStorage.setItem('shared-flowers', JSON.stringify(flowers));
                 localStorage.setItem('shared-gardens', JSON.stringify(gardens));
             }
