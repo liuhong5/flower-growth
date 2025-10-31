@@ -18,7 +18,9 @@
         .item { border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px; background: #f8f9fa; }
         .hidden { display: none; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .loading { color: #666; text-align: center; padding: 20px; }
+        .status { text-align: center; padding: 10px; border-radius: 5px; margin-bottom: 20px; }
+        .status.online { background: #d4edda; color: #155724; }
+        .status.offline { background: #f8d7da; color: #721c24; }
     </style>
 </head>
 <body>
@@ -44,6 +46,10 @@
                 </div>
             </div>
 
+            <div id="status-bar" class="status offline">
+                🔄 正在连接云端数据库...
+            </div>
+
             <div style="text-align: center; margin-bottom: 20px;">
                 <button id="btn-add-flower" class="btn-add hidden" onclick="doAddFlower()">添加花朵</button>
                 <button id="btn-add-garden" class="btn-add hidden" onclick="doAddGarden()">添加花田</button>
@@ -59,22 +65,22 @@
             <div class="grid">
                 <div>
                     <h2>所有花朵</h2>
-                    <div id="flowers-list" class="loading">加载中...</div>
+                    <div id="flowers-list">加载中...</div>
                 </div>
                 <div>
                     <h2>所有花田</h2>
-                    <div id="gardens-list" class="loading">加载中...</div>
+                    <div id="gardens-list">加载中...</div>
                 </div>
             </div>
 
             <div class="grid" style="margin-top: 20px;">
                 <div>
                     <h3>🏆 花朵排行榜</h3>
-                    <div id="flower-rank" class="loading">加载中...</div>
+                    <div id="flower-rank">加载中...</div>
                 </div>
                 <div>
                     <h3>🏆 花田排行榜</h3>
-                    <div id="garden-rank" class="loading">加载中...</div>
+                    <div id="garden-rank">加载中...</div>
                 </div>
             </div>
         </div>
@@ -82,10 +88,18 @@
 
     <script>
         let user = null, role = null, flowers = [], gardens = [];
+        let isOnline = false;
         
-        // 使用GitHub Gist作为简单数据库
-        const GIST_ID = '0fadb6924acc6fee38113b3e33e38972'; // 你的Gist ID
-        const GITHUB_TOKEN = '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'; // 你的GitHub Token
+        // GitHub Gist 配置
+        const GIST_ID = '42659ad468251102262fcb46aaabb50c';
+        const GITHUB_TOKEN = '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';
+        
+        function updateStatus(message, online = false) {
+            const statusBar = document.getElementById('status-bar');
+            statusBar.textContent = message;
+            statusBar.className = `status ${online ? 'online' : 'offline'}`;
+            isOnline = online;
+        }
         
         function getFlowerIcon(level) {
             const stages = ['🌱', '🌿', '🌸', '🌺', '🌻', '🌹', '🌷', '🌼', '🌎', '🎆'];
@@ -135,56 +149,53 @@
         }
 
         async function loadData() {
+            updateStatus('🔄 正在从云端加载数据...');
+            
             try {
-                console.log('尝试从 GitHub Gist 加载数据...');
                 const response = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
                     headers: { 'Authorization': `token ${GITHUB_TOKEN}` }
                 });
                 
                 if (response.ok) {
                     const gist = await response.json();
-                    console.log('Gist 文件:', Object.keys(gist.files));
-                    
-                    // 查找数据文件（优先使用第一个文件）
-                    const fileNames = Object.keys(gist.files);
-                    let dataFile = null;
-                    let fileName = '';
-                    
-                    if (fileNames.length > 0) {
-                        fileName = fileNames[0]; // 使用第一个文件
-                        gistFileName = fileName; // 保存文件名供保存时使用
-                        dataFile = gist.files[fileName];
-                        console.log(`使用文件: ${fileName}`);
-                    }
+                    const dataFile = gist.files['data.json'];
                     
                     if (dataFile) {
                         const data = JSON.parse(dataFile.content);
                         flowers = data.flowers || [];
                         gardens = data.gardens || [];
-                        console.log('从 GitHub 加载数据成功');
+                        updateStatus('☁️ 云端数据同步成功 - 所有用户共享数据', true);
+                        
+                        localStorage.setItem('backup-flowers', JSON.stringify(flowers));
+                        localStorage.setItem('backup-gardens', JSON.stringify(gardens));
                     } else {
-                        throw new Error('找不到 JSON 数据文件');
+                        throw new Error('找不到数据文件');
                     }
                 } else {
-                    console.error('GitHub API 错误:', response.status, response.statusText);
-                    throw new Error(`GitHub API 错误: ${response.status}`);
+                    throw new Error(`API错误: ${response.status}`);
                 }
             } catch (error) {
-                console.log('加载 GitHub 数据失败:', error.message);
-                console.log('使用本地存储作为备份');
-                flowers = JSON.parse(localStorage.getItem('shared-flowers') || '[]');
-                gardens = JSON.parse(localStorage.getItem('shared-gardens') || '[]');
+                console.error('云端加载失败:', error);
+                updateStatus('⚠️ 云端连接失败，使用本地备份数据');
+                
+                flowers = JSON.parse(localStorage.getItem('backup-flowers') || '[]');
+                gardens = JSON.parse(localStorage.getItem('backup-gardens') || '[]');
             }
+            
             updateDisplay();
         }
 
-        let gistFileName = 'data.json'; // 全局变量存储文件名
-        
         async function saveData() {
-            const data = { flowers, gardens, lastUpdate: new Date().toISOString() };
+            const data = { 
+                flowers, 
+                gardens, 
+                lastUpdate: new Date().toISOString(),
+                lastUser: user
+            };
             
             try {
-                console.log('尝试保存数据到 GitHub Gist...');
+                updateStatus('💾 正在保存到云端...');
+                
                 const response = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
                     method: 'PATCH',
                     headers: {
@@ -193,7 +204,7 @@
                     },
                     body: JSON.stringify({
                         files: {
-                            [gistFileName]: {
+                            'data.json': {
                                 content: JSON.stringify(data, null, 2)
                             }
                         }
@@ -201,16 +212,17 @@
                 });
                 
                 if (response.ok) {
-                    console.log('数据已成功保存到 GitHub Gist');
+                    updateStatus('✅ 数据已保存到云端 - 所有用户可见', true);
+                    localStorage.setItem('backup-flowers', JSON.stringify(flowers));
+                    localStorage.setItem('backup-gardens', JSON.stringify(gardens));
                 } else {
-                    console.error('GitHub 保存失败:', response.status, response.statusText);
                     throw new Error(`保存失败: ${response.status}`);
                 }
             } catch (error) {
-                console.log('保存到 GitHub 失败:', error.message);
-                console.log('使用本地存储作为备份');
-                localStorage.setItem('shared-flowers', JSON.stringify(flowers));
-                localStorage.setItem('shared-gardens', JSON.stringify(gardens));
+                console.error('云端保存失败:', error);
+                updateStatus('❌ 云端保存失败，已保存到本地');
+                localStorage.setItem('backup-flowers', JSON.stringify(flowers));
+                localStorage.setItem('backup-gardens', JSON.stringify(gardens));
             }
         }
 
@@ -575,8 +587,12 @@
             document.getElementById('garden-rank').innerHTML = gardenRankHtml || '<p style="text-align: center;">暂无数据</p>';
         }
 
-        // 初始化
-        loadData();
+        // 自动刷新数据（每30秒）
+        setInterval(() => {
+            if (user && isOnline) {
+                loadData();
+            }
+        }, 30000);
     </script>
 </body>
 </html>
