@@ -92,7 +92,7 @@
         
         // GitHub Gist 配置
         const GIST_ID = 'f4368b5e0d58942661f31451121da19e';
-        const GITHUB_TOKEN = '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';
+        const GITHUB_TOKEN = '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';
         
         function updateStatus(message, online = false) {
             const statusBar = document.getElementById('status-bar');
@@ -197,6 +197,7 @@
                 const response = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
                     method: 'PATCH',
                     headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
@@ -210,6 +211,7 @@
                 
                 if (response.ok) {
                     updateStatus('✅ 数据已保存到云端 - 所有用户可见', true);
+                    
                     localStorage.setItem('backup-flowers', JSON.stringify(flowers));
                     localStorage.setItem('backup-gardens', JSON.stringify(gardens));
                 } else {
@@ -218,6 +220,7 @@
             } catch (error) {
                 console.error('云端保存失败:', error);
                 updateStatus('❌ 云端保存失败，已保存到本地');
+                
                 localStorage.setItem('backup-flowers', JSON.stringify(flowers));
                 localStorage.setItem('backup-gardens', JSON.stringify(gardens));
             }
